@@ -76,7 +76,7 @@ pub fn draw(frame: &mut Frame, app: &App) {
 
     // Footer with status message
     let footer_text = if !app.status_message.is_empty() {
-        format!("⚠️  {} | [q/Esc] quit", app.status_message)
+        format!("{} | [q/Esc] quit", app.status_message)
     } else {
         format!(
             "[↑↓] move  [←→] page  [Tab] switch  [Enter] play  [q/Esc] quit  |  Focus: {}",

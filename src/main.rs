@@ -1,153 +1,135 @@
 mod anilist;
 mod gemini;
+mod app;
+mod ui;
 
+use std::io::Write;
 use anilist::fetch_anime_page;
 use gemini::get_gemini_recommendations;
-use crate::gemini::{GeminiResponse, Recommendation};
-use std::io::{self, Write};
-use std::process::Command;
+use app::{App, Focus};
+
+use crossterm::{
+    event::{self, Event, KeyCode},
+    terminal::{enable_raw_mode, disable_raw_mode, EnterAlternateScreen, LeaveAlternateScreen},
+    execute,
+};
+
+use ratatui::{Terminal, backend::CrosstermBackend};
+use std::{io::{self, stdout}, process::Command, time::Duration};
 
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn std::error::Error>> {
-    // Prompt
+    // ---- Fetch Gemini ----
     print!("Describe what you want to watch: ");
     io::stdout().flush().unwrap();
 
     let mut query = String::new();
     io::stdin().read_line(&mut query).unwrap();
-    let query = query.trim();
 
-    // Fallback defaults
-    let mut genres = vec!["Psychological".to_string(), "Sci-Fi".to_string()];
-    let mut tags: Vec<String> = Vec::new();
-
-    // Try Gemini (optional)
-    let gemini_response: Option<GeminiResponse> = match get_gemini_recommendations(query).await {
-        Ok(resp) => {
-            println!("\nGemini recommendations:");
-            for (i, rec) in resp.recommendations.iter().enumerate() {
-                println!("g{}. {} — {}", i + 1, rec.title, rec.reason);
-            }
-
-            // adopt genres if valid
-            if resp.genres.len() == 3 {
-                genres = resp.genres.clone();
-            }
-
-            // adopt single tag if present
-            if let Some(tag) = &resp.tag {
-                tags = vec![tag.clone()];
-            }
-
-            Some(resp)
-        }
+    let gemini_response = match get_gemini_recommendations(query.trim()).await {
+        Ok(resp) => resp,
         Err(e) => {
-            println!("Gemini failed, using fallback filters: {}", e);
-            None
+            eprintln!("Gemini error: {}", e);
+            return Ok(());
         }
     };
 
-    // Prepare a vector of Gemini recommendations (possibly empty)
-    let gemini_recs = gemini_response
-        .as_ref()
-        .map(|r| r.recommendations.clone())
-        .unwrap_or_else(Vec::new);
+    let mut app = App::new(gemini_response.recommendations.clone());
 
-    // start the interactive loop; it will only return when the user quits (presses 'q')
-    call_loop(1, genres, tags, gemini_recs).await?;
+    // ---- Terminal setup ----
+    enable_raw_mode()?;
+    execute!(stdout(), EnterAlternateScreen)?;
+    let backend = CrosstermBackend::new(stdout());
+    let mut terminal = Terminal::new(backend)?;
 
-    println!("Goodbye.");
-    Ok(())
+    // ---- Initial AniList fetch using Gemini's genres/tags ----
+    let tags = if let Some(tag) = gemini_response.tag {
+        vec![tag]
+    } else {
+        vec![]
+    };
+
+    app.anilist_items = match fetch_anime_page(
+        app.page,
+        10,
+        gemini_response.genres,
+        tags,
+    )
+    .await {
+        Ok(page) => page.media,
+        Err(e) => {
+            // Clean up terminal before showing error
+            disable_raw_mode()?;
+            execute!(stdout(), LeaveAlternateScreen)?;
+            eprintln!("AniList error: {}", e);
+            return Ok(());
+        }
+    };
+
+    // ---- Main loop ----
+    let result = run_app(&mut terminal, &mut app).await;
+
+    // ---- Restore terminal ----
+    disable_raw_mode()?;
+    execute!(stdout(), LeaveAlternateScreen)?;
+
+    result
 }
 
-/// Runs the interactive pagination + selection loop.
-/// When a title is selected, launch_ani_cli(...) is called and control returns to the loop afterwards.
-async fn call_loop(
-    mut page: i32,
-    genres: Vec<String>,
-    tags: Vec<String>,
-    gemini_recs: Vec<Recommendation>,
+async fn run_app(
+    terminal: &mut Terminal<CrosstermBackend<std::io::Stdout>>,
+    app: &mut App,
 ) -> Result<(), Box<dyn std::error::Error>> {
     loop {
-        let result = fetch_anime_page(page, 5, genres.clone(), tags.clone()).await?;
+        terminal.draw(|f| ui::draw(f, &app))?;
 
-        if result.media.is_empty() {
-            println!("\nNo results found on this page.");
-            if !result.pageInfo.hasNextPage {
-                // nothing more to do
-                break;
-            }
-        } else {
-            println!("\nPage {}", page);
-            for (i, anime) in result.media.iter().enumerate() {
-                println!("{}. {}", i + 1, anime.title.romaji);
-            }
-        }
+        if event::poll(Duration::from_millis(200))? {
+            if let Event::Key(key) = event::read()? {
+                match key.code {
+                    KeyCode::Char('q') => break,
 
-        println!(
-            "\n[n] next | [p] prev | [g1-g{}] Gemini | [1-{}] select | [q] quit",
-            gemini_recs.len(),
-            result.media.len()
-        );
-
-        print!("> ");
-        io::stdout().flush().unwrap();
-
-        let mut input = String::new();
-        io::stdin().read_line(&mut input).unwrap();
-        let input = input.trim();
-
-        match input {
-            "n" => {
-                if result.pageInfo.hasNextPage {
-                    page += 1;
-                } else {
-                    println!("No next page available");
-                }
-            }
-            "p" => {
-                if page > 1 {
-                    page -= 1;
-                } else {
-                    println!("Cannot go to previous page");
-                }
-            }
-            "q" => break,
-            other => {
-                // Gemini selection: gN
-                if other.starts_with('g') {
-                    let idx_str = &other[1..];
-                    match idx_str.parse::<usize>() {
-                        Ok(idx) if idx >= 1 && idx <= gemini_recs.len() => {
-                            let title = gemini_recs[idx - 1].title.clone();
-                            // launch ani-cli; when it exits, we return here and continue loop
-                            if let Err(e) = launch_ani_cli(&title) {
-                                eprintln!("Failed to run ani-cli: {}", e);
-                            }
-                            continue; // continue showing the list after ani-cli exits
-                        }
-                        _ => {
-                            println!("Invalid Gemini selection (use g1..gN)");
-                            continue;
-                        }
+                    KeyCode::Tab => {
+                        app.focus = match app.focus {
+                            Focus::Gemini => Focus::AniList,
+                            Focus::AniList => Focus::Gemini,
+                        };
                     }
-                }
 
-                // AniList numeric selection
-                if let Ok(idx) = other.parse::<usize>() {
-                    if idx >= 1 && idx <= result.media.len() {
-                        let title = result.media[idx - 1].title.romaji.clone();
-                        if let Err(e) = launch_ani_cli(&title) {
-                            eprintln!("Failed to run ani-cli: {}", e);
-                        }
-                        continue; // return to list after ani-cli exits
-                    } else {
-                        println!("Invalid selection (out of range)");
-                        continue;
+                    KeyCode::Up => match app.focus {
+                        Focus::Gemini if app.gemini_index > 0 => app.gemini_index -= 1,
+                        Focus::AniList if app.anilist_index > 0 => app.anilist_index -= 1,
+                        _ => {}
+                    },
+
+                    KeyCode::Down => match app.focus {
+                        Focus::Gemini if app.gemini_index + 1 < app.gemini_recs.len() =>
+                            app.gemini_index += 1,
+                        Focus::AniList if app.anilist_index + 1 < app.anilist_items.len() =>
+                            app.anilist_index += 1,
+                        _ => {}
+                    },
+
+                    KeyCode::Enter => {
+                        let title = match app.focus {
+                            Focus::Gemini =>
+                                app.gemini_recs[app.gemini_index].title.clone(),
+                            Focus::AniList =>
+                                app.anilist_items[app.anilist_index].title.romaji.clone(),
+                        };
+
+                        // Clean up terminal before launching ani-cli
+                        disable_raw_mode()?;
+                        execute!(stdout(), LeaveAlternateScreen)?;
+                        
+                        launch_ani_cli(&title)?;
+                        
+                        // Restore terminal after ani-cli exits
+                        enable_raw_mode()?;
+                        execute!(stdout(), EnterAlternateScreen)?;
                     }
-                }
 
-                println!("Invalid input");
+                    _ => {}
+                }
             }
         }
     }
@@ -155,16 +137,7 @@ async fn call_loop(
     Ok(())
 }
 
-/// Launches ani-cli synchronously and returns after it exits.
-/// Uses Command::status so the user interacts with ani-cli in the same terminal.
 fn launch_ani_cli(title: &str) -> Result<(), Box<dyn std::error::Error>> {
-    println!("\nLaunching ani-cli for: {}\n", title);
-
-    let status = Command::new("ani-cli").arg(title).status()?;
-
-    if !status.success() {
-        eprintln!("ani-cli exited with status: {}", status);
-    }
-
+    Command::new("ani-cli").arg(title).status()?;
     Ok(())
 }

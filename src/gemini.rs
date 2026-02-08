@@ -35,8 +35,8 @@ Task:
 - Provide a short reason (max 50 words) for each
 
 Rules:
-- ReN
-- Do NOT use markdturn ONLY valid JSOown
+- Return ONLY valid JSON
+- Do NOT use markdown
 - Do NOT add explanations
 - Use official AniList anime titles
 - If unsure, choose common genres and no tag
@@ -74,6 +74,7 @@ User input:
         .await?;
 
     println!("{:?}", raw);
+
     let text = raw["candidates"][0]["content"]["parts"][0]["text"]
         .as_str()
         .ok_or("Invalid Gemini response")?;

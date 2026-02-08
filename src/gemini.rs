@@ -37,13 +37,11 @@ TASK:
 6. Give a concise reason (max 40 words) for each recommendation
 
 CRITICAL RULES:
-- Return ONLY valid JSON with no markdown, no code blocks, no explanations
-- Use EXACT official AniList anime titles (correct spelling and capitalization)
-- If user mentions a specific anime, it MUST be recommendation #1
+- Return only valid JSON with no markdown, no code blocks, no explanations
+- If user mentions a specific anime, it must be recommendation no. 1
 - Genres must be valid AniList genres: Action, Adventure, Comedy, Drama, Ecchi, Fantasy, Horror, Mahou Shoujo, Mecha, Music, Mystery, Psychological, Romance, Sci-Fi, Slice of Life, Sports, Supernatural, Thriller
 - Tags are optional but must be valid AniList tags if used
 - Recommendations should be diverse but thematically related
-- Prioritize highly-rated and popular anime
 
 VALID JSON FORMAT (no other text):
 {{

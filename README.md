@@ -5,6 +5,9 @@ and trying to manually figure out what genre or type of anime I want to watch.
 
 Now, I just tell it the mood I am in or what type of anime I want to watch (something like *x*), and it generates a list of anime, sorted in order of rating (and some special recommendation from the AI itself) that I can select from. It then also plays the anime directly in `mpv` using `ani-cli`.
 
+## Demo
+https://github.com/user-attachments/assets/9692ecbc-c4a4-46a8-97ba-5308a6b732a0
+
 ## How it works
 
 - It uses Gemini to understand your intent and extracts genres from it  

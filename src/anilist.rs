@@ -37,13 +37,13 @@ pub struct PageInfo {
     pub hasNextPage: bool,
 }
 
-#[derive(Debug, Deserialize)]
+#[derive(Debug, Deserialize, Clone)]
 pub struct Anime {
     pub id: i32,
     pub title: Title,
 }
 
-#[derive(Debug, Deserialize)]
+#[derive(Debug, Deserialize, Clone)]
 pub struct Title {
     pub romaji: String,
 }

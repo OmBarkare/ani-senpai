@@ -1,6 +1,6 @@
 use ratatui::{
     prelude::*,
-    widgets::{Block, Borders, List, ListItem, ListState},
+    widgets::{Block, Borders, List, ListItem, ListState, Paragraph},
 };
 
 use crate::app::{App, Focus};
@@ -56,10 +56,16 @@ pub fn draw(frame: &mut Frame, app: &App) {
         Style::default()
     };
 
+    let page_indicator = if app.has_next_page {
+        format!(" (Page {}) →", app.page)
+    } else {
+        format!(" (Page {} - Last)", app.page)
+    };
+
     let anilist = List::new(anilist_items)
         .block(
             Block::default()
-                .title(format!("📺 AniList Results ({})", app.anilist_items.len()))
+                .title(format!("📺 AniList Results{}", page_indicator))
                 .borders(Borders::ALL)
                 .border_style(anilist_border_style)
         )
@@ -68,19 +74,31 @@ pub fn draw(frame: &mut Frame, app: &App) {
     frame.render_stateful_widget(gemini, layout[0], &mut gemini_state);
     frame.render_stateful_widget(anilist, layout[1], &mut anilist_state);
 
-    // Footer
-    let footer_text = format!(
-        "[↑↓] move  [Tab] switch  [Enter] play  [q] quit  |  Focus: {}",
-        match app.focus {
-            Focus::Gemini => "Gemini",
-            Focus::AniList => "AniList",
-        }
-    );
+    // Footer with status message
+    let footer_text = if !app.status_message.is_empty() {
+        format!("⚠️  {} | [q/Esc] quit", app.status_message)
+    } else {
+        format!(
+            "[↑↓] move  [←→] page  [Tab] switch  [Enter] play  [q/Esc] quit  |  Focus: {}",
+            match app.focus {
+                Focus::Gemini => "Gemini",
+                Focus::AniList => "AniList",
+            }
+        )
+    };
 
-    let footer = Block::default()
-        .borders(Borders::ALL)
-        .title(footer_text)
-        .style(Style::default().fg(Color::DarkGray));
+    let footer_style = if !app.status_message.is_empty() {
+        Style::default().fg(Color::Yellow)
+    } else {
+        Style::default().fg(Color::DarkGray)
+    };
+
+    let footer = Paragraph::new(footer_text)
+        .block(
+            Block::default()
+                .borders(Borders::ALL)
+                .style(footer_style)
+        );
 
     frame.render_widget(footer, layout[2]);
 }

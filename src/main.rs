@@ -35,6 +35,12 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     };
 
     let mut app = App::new(gemini_response.recommendations.clone());
+    app.genres = gemini_response.genres;
+    app.tags = if let Some(tag) = gemini_response.tag {
+        vec![tag]
+    } else {
+        vec![]
+    };
 
     // ---- Terminal setup ----
     enable_raw_mode()?;
@@ -43,20 +49,17 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     let mut terminal = Terminal::new(backend)?;
 
     // ---- Initial AniList fetch using Gemini's genres/tags ----
-    let tags = if let Some(tag) = gemini_response.tag {
-        vec![tag]
-    } else {
-        vec![]
-    };
-
     app.anilist_items = match fetch_anime_page(
         app.page,
         10,
-        gemini_response.genres,
-        tags,
+        app.genres.clone(),
+        app.tags.clone(),
     )
     .await {
-        Ok(page) => page.media,
+        Ok(page) => {
+            app.has_next_page = page.pageInfo.hasNextPage;
+            page.media
+        },
         Err(e) => {
             // Clean up terminal before showing error
             disable_raw_mode()?;
@@ -83,10 +86,18 @@ async fn run_app(
     loop {
         terminal.draw(|f| ui::draw(f, &app))?;
 
+        // Clear any status message after displaying
+        if !app.status_message.is_empty() {
+            app.status_message.clear();
+        }
+
         if event::poll(Duration::from_millis(200))? {
             if let Event::Key(key) = event::read()? {
                 match key.code {
-                    KeyCode::Char('q') => break,
+                    KeyCode::Char('q') | KeyCode::Esc => {
+                        app.should_quit = true;
+                        break;
+                    }
 
                     KeyCode::Tab => {
                         app.focus = match app.focus {
@@ -102,12 +113,89 @@ async fn run_app(
                     },
 
                     KeyCode::Down => match app.focus {
-                        Focus::Gemini if app.gemini_index + 1 < app.gemini_recs.len() =>
-                            app.gemini_index += 1,
-                        Focus::AniList if app.anilist_index + 1 < app.anilist_items.len() =>
-                            app.anilist_index += 1,
+                        Focus::Gemini if app.gemini_index + 1 < app.gemini_recs.len() => {
+                            app.gemini_index += 1;
+                        }
+                        Focus::AniList if app.anilist_index + 1 < app.anilist_items.len() => {
+                            app.anilist_index += 1;
+                        }
+                        // Auto-fetch next page when scrolling past the bottom
+                        Focus::AniList if app.anilist_index + 1 >= app.anilist_items.len() && app.has_next_page => {
+                            app.page += 1;
+                            match fetch_anime_page(
+                                app.page,
+                                10,
+                                app.genres.clone(),
+                                app.tags.clone(),
+                            )
+                            .await {
+                                Ok(page) => {
+                                    app.anilist_items = page.media;
+                                    app.has_next_page = page.pageInfo.hasNextPage;
+                                    app.anilist_index = 0;
+                                    app.status_message = format!("Loaded page {}", app.page);
+                                },
+                                Err(_) => {
+                                    app.page -= 1;
+                                    app.status_message = "Failed to load next page".to_string();
+                                }
+                            }
+                        }
+                        Focus::AniList if app.anilist_index + 1 >= app.anilist_items.len() && !app.has_next_page => {
+                            app.status_message = "No more pages available".to_string();
+                        }
                         _ => {}
                     },
+
+                    KeyCode::Right if app.focus == Focus::AniList && app.has_next_page => {
+                        // Fetch next page
+                        app.page += 1;
+                        match fetch_anime_page(
+                            app.page,
+                            10,
+                            app.genres.clone(),
+                            app.tags.clone(),
+                        )
+                        .await {
+                            Ok(page) => {
+                                app.anilist_items = page.media;
+                                app.has_next_page = page.pageInfo.hasNextPage;
+                                app.anilist_index = 0;
+                                app.status_message = format!("Page {}", app.page);
+                            },
+                            Err(_) => {
+                                app.page -= 1;
+                                app.status_message = "Failed to load page".to_string();
+                            }
+                        }
+                    }
+                    
+                    KeyCode::Right if app.focus == Focus::AniList && !app.has_next_page => {
+                        app.status_message = "No more pages available".to_string();
+                    }
+
+                    KeyCode::Left if app.focus == Focus::AniList && app.page > 1 => {
+                        // Fetch previous page
+                        app.page -= 1;
+                        match fetch_anime_page(
+                            app.page,
+                            10,
+                            app.genres.clone(),
+                            app.tags.clone(),
+                        )
+                        .await {
+                            Ok(page) => {
+                                app.anilist_items = page.media;
+                                app.has_next_page = page.pageInfo.hasNextPage;
+                                app.anilist_index = 0;
+                                app.status_message = format!("Page {}", app.page);
+                            },
+                            Err(_) => {
+                                app.page += 1;
+                                app.status_message = "Failed to load page".to_string();
+                            }
+                        }
+                    }
 
                     KeyCode::Enter => {
                         let title = match app.focus {
@@ -116,6 +204,9 @@ async fn run_app(
                             Focus::AniList =>
                                 app.anilist_items[app.anilist_index].title.romaji.clone(),
                         };
+
+                        // Store current state
+                        let saved_state = app.clone();
 
                         // Clean up terminal before launching ani-cli
                         disable_raw_mode()?;
@@ -126,6 +217,13 @@ async fn run_app(
                         // Restore terminal after ani-cli exits
                         enable_raw_mode()?;
                         execute!(stdout(), EnterAlternateScreen)?;
+                        
+                        // Restore the app state
+                        *app = saved_state;
+                        app.status_message = format!("Returned from watching: {}", title);
+                        
+                        // Force a full redraw
+                        terminal.clear()?;
                     }
 
                     _ => {}

@@ -7,6 +7,7 @@ pub enum Focus {
     AniList,
 }
 
+#[derive(Clone)]
 pub struct App {
     pub focus: Focus,
     pub gemini_index: usize,
@@ -16,6 +17,11 @@ pub struct App {
     pub gemini_recs: Vec<Recommendation>,
     pub anilist_items: Vec<Anime>,
 
+    pub genres: Vec<String>,
+    pub tags: Vec<String>,
+    pub has_next_page: bool,
+
+    pub status_message: String,
     pub should_quit: bool,
 }
 
@@ -28,6 +34,10 @@ impl App {
             page: 1,
             gemini_recs,
             anilist_items: Vec::new(),
+            genres: Vec::new(),
+            tags: Vec::new(),
+            has_next_page: false,
+            status_message: String::new(),
             should_quit: false,
         }
     }

@@ -7,7 +7,7 @@ pub struct GeminiResponse {
     pub recommendations: Vec<Recommendation>,
 }
 
-#[derive(Debug, Deserialize)]
+#[derive(Debug, Deserialize, Clone)]
 pub struct Recommendation {
     pub title: String,
     pub reason: String,
@@ -73,6 +73,7 @@ User input:
         .json::<serde_json::Value>()
         .await?;
 
+    println!("{:?}", raw);
     let text = raw["candidates"][0]["content"]["parts"][0]["text"]
         .as_str()
         .ok_or("Invalid Gemini response")?;

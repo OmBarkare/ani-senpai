@@ -48,7 +48,6 @@ pub struct Title {
     pub romaji: String,
 }
 
-
 const ANILIST_ENDPOINT: &str = "https://graphql.anilist.co";
 
 const QUERY: &str = r#"
@@ -61,15 +60,18 @@ query ($page: Int, $perPage: Int, $genres: [String], $tags: [String]) {
       type: ANIME
       genre_in: $genres
       tag_in: $tags
+      sort: SCORE_DESC
     ) {
       id
       title {
         romaji
       }
+      averageScore
     }
   }
 }
 "#;
+
 
 pub async fn fetch_anime_page(
     page: i32,

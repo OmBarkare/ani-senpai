@@ -36,7 +36,7 @@ pub fn draw(frame: &mut Frame, app: &App) {
             Block::default()
                 .title("🤖 Gemini Picks")
                 .borders(Borders::ALL)
-                .border_style(gemini_border_style)
+                .border_style(gemini_border_style),
         )
         .highlight_style(Style::default().bg(Color::Magenta).fg(Color::Black));
 
@@ -67,7 +67,7 @@ pub fn draw(frame: &mut Frame, app: &App) {
             Block::default()
                 .title(format!("📺 AniList Results{}", page_indicator))
                 .borders(Borders::ALL)
-                .border_style(anilist_border_style)
+                .border_style(anilist_border_style),
         )
         .highlight_style(Style::default().bg(Color::Blue).fg(Color::White));
 
@@ -94,11 +94,7 @@ pub fn draw(frame: &mut Frame, app: &App) {
     };
 
     let footer = Paragraph::new(footer_text)
-        .block(
-            Block::default()
-                .borders(Borders::ALL)
-                .style(footer_style)
-        );
+        .block(Block::default().borders(Borders::ALL).style(footer_style));
 
     frame.render_widget(footer, layout[2]);
 }

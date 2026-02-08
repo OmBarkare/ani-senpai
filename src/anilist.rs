@@ -72,7 +72,6 @@ query ($page: Int, $perPage: Int, $genres: [String], $tags: [String]) {
 }
 "#;
 
-
 pub async fn fetch_anime_page(
     page: i32,
     perPage: i32,

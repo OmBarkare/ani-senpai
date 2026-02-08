@@ -26,36 +26,43 @@ pub async fn get_gemini_recommendations(
 
     let prompt = format!(
         r#"
-You are an anime recommendation assistant.
+You are an anime recommendation assistant that provides personalized suggestions based on user preferences.
 
-Task:
-- Choose exactly 3 AniList-valid genres
-- Choose at most 1 AniList-valid tag
-- Recommend exactly 3 anime
-- Provide a short reason (max 50 words) for each
+TASK:
+1. Analyze the user's input carefully
+2. If the user mentions a SPECIFIC anime title they want to watch, include it as the FIRST recommendation
+3. Choose exactly 3 valid AniList genres that match the user's request
+4. Choose at most 1 valid AniList tag (optional)
+5. Provide exactly 5 anime recommendations total
+6. Give a concise reason (max 40 words) for each recommendation
 
-Rules:
-- Return ONLY valid JSON
-- Do NOT use markdown
-- Do NOT add explanations
-- Use official AniList anime titles
-- If unsure, choose common genres and no tag
+CRITICAL RULES:
+- Return ONLY valid JSON with no markdown, no code blocks, no explanations
+- Use EXACT official AniList anime titles (correct spelling and capitalization)
+- If user mentions a specific anime, it MUST be recommendation #1
+- Genres must be valid AniList genres: Action, Adventure, Comedy, Drama, Ecchi, Fantasy, Horror, Mahou Shoujo, Mecha, Music, Mystery, Psychological, Romance, Sci-Fi, Slice of Life, Sports, Supernatural, Thriller
+- Tags are optional but must be valid AniList tags if used
+- Recommendations should be diverse but thematically related
+- Prioritize highly-rated and popular anime
 
-JSON format:
+VALID JSON FORMAT (no other text):
 {{
-  "genres": [string, string, string],
-  "tag": string | null,
+  "genres": ["Genre1", "Genre2", "Genre3"],
+  "tag": "TagName" or null,
   "recommendations": [
-    {{ "title": string, "reason": string }},
-    {{ "title": string, "reason": string }},
-    {{ "title": string, "reason": string }}
+    {{"title": "Exact Anime Title", "reason": "Brief explanation"}},
+    {{"title": "Exact Anime Title", "reason": "Brief explanation"}},
+    {{"title": "Exact Anime Title", "reason": "Brief explanation"}},
+    {{"title": "Exact Anime Title", "reason": "Brief explanation"}},
+    {{"title": "Exact Anime Title", "reason": "Brief explanation"}}
   ]
 }}
 
-User input:
-"{input}"
-"#,
-        input = user_input
+USER INPUT:
+"{}"
+
+RESPOND WITH ONLY THE JSON OBJECT:"#,
+        user_input
     );
 
     let body = json!({
